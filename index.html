@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VibeNVR — camera modal redesign mockup</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --color-text-primary:#e6edf3; --color-text-secondary:#9aa7b8; --color-text-tertiary:#6b7787;
+  --color-background-page:#0b1220; --color-background-primary:#111827; --color-background-secondary:#1b2433;
+  --color-border-tertiary:rgba(255,255,255,0.08); --color-border-secondary:rgba(255,255,255,0.16);
+  --color-text-info:#3b82f6; --color-border-info:rgba(59,130,246,0.45); --color-background-info:rgba(59,130,246,0.15);
+  --border-radius-md:8px; --border-radius-lg:12px;
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--color-background-page); color:var(--color-text-primary); font-family:var(--font-sans); padding:24px 16px}
+.wrap{max-width:720px; margin:0 auto}
+h1{font-size:20px; font-weight:500; margin:0 0 4px}
+.sub{font-size:13px; color:var(--color-text-secondary); margin:0 0 18px}
+button.mode{font-family:inherit; font-size:13px; color:var(--color-text-secondary); background:transparent; border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); padding:7px 14px; cursor:pointer}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.note{font-size:12px; color:var(--color-text-tertiary); margin-top:14px; line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2 class="sr-only">Proposed VibeNVR camera edit modal: desktop layout with a left vertical tab rail and multi-column content, and a mobile master-detail drill-down.</h2>
+  <h1>Camera edit modal — redesign proposal</h1>
+  <p class="sub">Desktop: left tab rail + multi-column content (no scrollbars). Mobile: master-detail drill-down. Click tabs / sections to explore.</p>
+  <div style="display:flex; gap:8px; margin-bottom:1rem">
+    <button class="mode" id="m-desktop"><i class="ti ti-device-desktop" aria-hidden="true" style="font-size:16px; vertical-align:-2px; margin-right:6px"></i>Desktop</button>
+    <button class="mode" id="m-mobile"><i class="ti ti-device-mobile" aria-hidden="true" style="font-size:16px; vertical-align:-2px; margin-right:6px"></i>Mobile</button>
+  </div>
+  <div id="stage" style="min-height:480px; background:rgba(0,0,0,0.35); border-radius:var(--border-radius-lg); display:flex; align-items:center; justify-content:center; padding:16px"></div>
+  <p class="note">Mockup only — illustrates the proposed layout for the 11 existing tabs (General, Device, Motion, Privacy mask, Motion zones, Movies, Snapshots, Alerts, Overlay, ONVIF, AI &amp; tracking). The "Use these streams" button shown on the ONVIF tab is the already-merged feature (#55).</p>
+</div>
+<script>
+const TABS = [
+  {id:'general', label:'General', icon:'ti-info-circle', fields:[['Camera name','Backyard'],['Location','Yard'],['RTSP URL','rtsp://…/stream=0'],['Username','admin'],['Password','••••••'],['RTSP transport','TCP']]},
+  {id:'device', label:'Device', icon:'ti-settings', fields:[['Resolution','2304×1296'],['Framerate','15 fps'],['Rotation','0°'],['Auto-resolution','On']]},
+  {id:'motion', label:'Motion', icon:'ti-activity', fields:[['Detection engine','AI'],['Threshold','1500'],['Sensitivity','Auto'],['Min frames','2'],['Motion gap','10 s'],['Despeckle','Off']]},
+  {id:'privacy', label:'Privacy mask', icon:'ti-eye-off', canvas:'Privacy polygons'},
+  {id:'zones', label:'Motion zones', icon:'ti-shield', canvas:'Exclusion zones'},
+  {id:'movies', label:'Movies', icon:'ti-movie', fields:[['Recording mode','Continuous'],['Quality (CRF)','75'],['Max length','120 s'],['Passthrough','On'],['Record audio','Off'],['File name','%Y/%H-%M-%S']]},
+  {id:'snapshots', label:'Snapshots', icon:'ti-photo', fields:[['Picture mode','Motion triggered'],['Quality','90'],['File name','%Y/%H-%M-%S-%q']]},
+  {id:'alerts', label:'Alerts', icon:'ti-bell', fields:[['Telegram','Off'],['Email','Off'],['Webhook','On'],['Health alerts','On']]},
+  {id:'overlay', label:'Overlay', icon:'ti-typography', fields:[['Text left','Backyard'],['Text right','Timestamp'],['Text scale','1.0'],['Show timestamp','On']]},
+  {id:'onvif', label:'ONVIF', icon:'ti-device-cctv', onvif:true, fields:[['ONVIF host','192.168.2.91'],['Port','8899'],['Username','admin'],['Password','••••••']]},
+  {id:'ai', label:'AI & tracking', icon:'ti-brain', fields:[['AI enabled','On'],['Objects','person'],['Threshold','0.50'],['Tracking','On']]},
+];
+let mode='desktop', active='onvif', mobileDetail=null;
+const stage=document.getElementById('stage');
+const T='var(--color-text-primary)', T2='var(--color-text-secondary)', T3='var(--color-text-tertiary)';
+const BG='var(--color-background-primary)', BG2='var(--color-background-secondary)';
+const BD='0.5px solid var(--color-border-tertiary)', BD2='0.5px solid var(--color-border-secondary)';
+function field(label,val){
+  return `<div><div style="font-size:11px; color:${T3}; margin-bottom:4px">${label}</div>
+    <div style="height:32px; border:${BD2}; border-radius:var(--border-radius-md); background:${BG2}; display:flex; align-items:center; padding:0 10px; font-size:13px; color:${T}">${val}</div></div>`;
+}
+function onvifExtra(){
+  return `<div style="grid-column:1/-1; margin-top:4px; border:${BD}; border-radius:var(--border-radius-md); padding:10px 12px; background:${BG2}">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
+      <span style="font-size:11px; color:${T3}; text-transform:uppercase; letter-spacing:.04em">Detected stream profiles</span>
+      <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--color-text-info); border:1px solid var(--color-border-info); border-radius:var(--border-radius-md); padding:4px 10px"><i class="ti ti-wand" aria-hidden="true"></i>Use these streams</span>
+    </div>
+    <div style="font-size:11px; color:${T2}; font-family:monospace">PROFILE_000 · main &nbsp; rtsp://…stream=0</div>
+    <div style="font-size:11px; color:${T2}; font-family:monospace; margin-top:3px">PROFILE_001 · sub &nbsp;&nbsp; rtsp://…stream=1</div>
+  </div>`;
+}
+function content(tab){
+  if(tab.canvas){
+    return `<div style="height:240px; border:${BD2}; border-radius:var(--border-radius-md); background:${BG2}; display:flex; align-items:center; justify-content:center; color:${T3}; font-size:13px">${tab.canvas} editor</div>`;
+  }
+  let f=tab.fields.map(x=>field(x[0],x[1])).join('');
+  if(tab.onvif) f+=onvifExtra();
+  return `<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px">${f}</div>`;
+}
+function railBtn(tab){
+  const on=tab.id===active;
+  return `<button data-tab="${tab.id}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; border:none; background:${on?'var(--color-background-info)':'transparent'}; color:${on?'var(--color-text-info)':T2}; border-radius:var(--border-radius-md); padding:7px 10px; font-size:13px; cursor:pointer; font-family:inherit">
+    <i class="ti ${tab.icon}" aria-hidden="true" style="font-size:17px"></i>${tab.label}</button>`;
+}
+function renderDesktop(){
+  const tab=TABS.find(t=>t.id===active);
+  stage.innerHTML=`<div style="width:100%; max-width:660px; background:${BG}; border:${BD}; border-radius:var(--border-radius-lg); overflow:hidden">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:${BD}">
+      <div><div style="font-size:15px; font-weight:500; color:${T}">Edit camera</div>
+        <div style="font-size:12px; color:${T2}">Backyard settings</div></div>
+      <i class="ti ti-x" aria-hidden="true" style="font-size:18px; color:${T2}"></i></div>
+    <div style="display:flex; min-height:340px">
+      <div style="width:176px; border-right:${BD}; padding:10px; display:flex; flex-direction:column; gap:2px">${TABS.map(railBtn).join('')}</div>
+      <div style="flex:1; padding:18px 20px; min-width:0">
+        <div style="font-size:14px; font-weight:500; color:${T}; margin-bottom:14px">${tab.label}</div>
+        ${content(tab)}</div></div>
+    <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:12px 18px; border-top:${BD}">
+      <span style="font-size:13px; color:${T2}">Cancel</span>
+      <span style="font-size:13px; color:var(--color-text-info); border:1px solid var(--color-border-info); border-radius:var(--border-radius-md); padding:6px 14px">Apply</span>
+      <span style="font-size:13px; color:#fff; background:var(--color-text-info); border-radius:var(--border-radius-md); padding:6px 14px">Save</span></div></div>`;
+  stage.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{active=b.dataset.tab; renderDesktop();});
+}
+function renderMobile(){
+  const inner = mobileDetail ? mobileDetailView() : mobileList();
+  stage.innerHTML=`<div style="width:300px; height:440px; background:${BG}; border:${BD2}; border-radius:22px; overflow:hidden; display:flex; flex-direction:column">${inner}</div>`;
+  bindMobile();
+}
+function mobileList(){
+  const rows=TABS.map(t=>`<button data-m="${t.id}" style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; border:none; background:transparent; border-bottom:${BD}; padding:12px 14px; font-size:14px; color:${T}; cursor:pointer; font-family:inherit">
+    <i class="ti ${t.icon}" aria-hidden="true" style="font-size:18px; color:${T2}"></i><span style="flex:1">${t.label}</span>
+    <i class="ti ti-chevron-right" aria-hidden="true" style="font-size:16px; color:${T3}"></i></button>`).join('');
+  return `<div style="padding:14px 14px 10px; border-bottom:${BD}">
+      <div style="font-size:15px; font-weight:500; color:${T}">Edit camera</div>
+      <div style="font-size:12px; color:${T2}">Backyard · tap a section</div></div>
+    <div style="flex:1; overflow-y:auto">${rows}</div>`;
+}
+function mobileDetailView(){
+  const tab=TABS.find(t=>t.id===mobileDetail);
+  let body = tab.canvas
+    ? `<div style="height:200px; border:${BD2}; border-radius:var(--border-radius-md); background:${BG2}; display:flex; align-items:center; justify-content:center; color:${T3}; font-size:13px">${tab.canvas} editor</div>`
+    : `<div style="display:flex; flex-direction:column; gap:12px">${tab.fields.map(x=>field(x[0],x[1])).join('')}${tab.onvif?onvifExtra():''}</div>`;
+  return `<div style="display:flex; align-items:center; gap:10px; padding:13px 14px; border-bottom:${BD}">
+      <button data-back="1" aria-label="Back" style="border:none; background:transparent; cursor:pointer; color:var(--color-text-info); display:flex; align-items:center"><i class="ti ti-chevron-left" aria-hidden="true" style="font-size:20px"></i></button>
+      <span style="font-size:15px; font-weight:500; color:${T}">${tab.label}</span></div>
+    <div style="flex:1; overflow-y:auto; padding:14px">${body}</div>`;
+}
+function bindMobile(){
+  stage.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{mobileDetail=b.dataset.m; renderMobile();});
+  const back=stage.querySelector('[data-back]'); if(back) back.onclick=()=>{mobileDetail=null; renderMobile();};
+}
+function setMode(m){
+  mode=m;
+  document.getElementById('m-desktop').style.background = m==='desktop'?'var(--color-background-secondary)':'transparent';
+  document.getElementById('m-mobile').style.background = m==='mobile'?'var(--color-background-secondary)':'transparent';
+  if(m==='desktop') renderDesktop(); else {mobileDetail=null; renderMobile();}
+}
+document.getElementById('m-desktop').onclick=()=>setMode('desktop');
+document.getElementById('m-mobile').onclick=()=>setMode('mobile');
+setMode('desktop');
+</script>
+</body>
+</html>
